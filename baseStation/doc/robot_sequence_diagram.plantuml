@@ -1,0 +1,40 @@
+@startuml
+
+participant "robotWatcher" as watcher
+
+[-> watcher : run()
+activate watcher
+
+loop while True
+
+participant socket
+watcher -> socket : recv()
+activate socket
+socket --> watcher : message
+deactivate socket
+
+alt message = "position"
+participant RobotPositionService as position
+watcher -> position : update()
+activate position
+note right of position : sequence detailled in\n previous diagram
+position --> watcher
+deactivate position
+
+watcher -> position : get_position()
+activate position
+position --> watcher : position
+deactivate position
+
+watcher -> socket : send(position)
+activate socket
+socket --> watcher
+deactivate socket
+
+end
+end
+
+watcher -->[
+deactivate watcher
+
+@enduml

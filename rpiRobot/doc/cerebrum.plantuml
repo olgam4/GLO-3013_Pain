@@ -1,0 +1,62 @@
+@startuml
+
+participant ":CortexService(ICerebrum)" as service
+participant ":Cortex" as cortex
+participant ":ICommunicationCortex" as comms
+participant ":IMotorCortex" as motor
+participant ":IVisualCortex" as vision
+
+[-> service: run()
+activate service
+service -> cortex ++ : run()
+
+cortex -> cortex ++ : query_destinations()
+cortex -> comms ++ : get_charge_station_pathable()
+return charge_station
+cortex -> comms ++ : get_qr_code_pathable()
+return qr_code
+cortex -> comms ++ : get_source_pathable()
+return source
+cortex -> comms ++ : get_goal_pathable()
+return goal
+cortex -> comms ++ : get_home_pathable()
+return home
+return
+
+cortex -> motor ++ : travel_to(charge_station)
+return
+cortex ->o cortex: wait_for_charge()
+cortex -> motor ++ : travel_to(qr_code)
+return
+cortex -> vision ++ : find_objective()
+return objective
+cortex -> motor ++ : travel_to(source)
+return
+cortex -> cortex ++ : grab(objective)
+cortex -> vision ++ : path_to_grab(objective)
+return pathable
+cortex -> motor ++ : travel_to(pathable)
+return
+cortex -> motor ++ : grab_here()
+return
+return
+cortex -> motor ++ : travel_to(goal)
+return
+cortex -> cortex ++ : drop(objective)
+cortex -> vision ++ : path_to_drop(objective)
+return pathable
+cortex -> motor ++ : travel_to(pathable)
+return
+cortex -> motor ++ : drop_here()
+return
+return
+cortex -> motor ++ : travel_to(home)
+return
+cortex -> comms ++ : announce_win()
+return
+
+return
+[<-- service
+deactivate service
+
+@enduml

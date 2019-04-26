@@ -1,0 +1,28 @@
+@startuml
+
+participant ":RobotWorker(IRobotWorker)" as worker
+participant ":VisionService" as vision
+participant ":DisplayService" as display
+participant "message:Message" as message
+participant ":CommunicationService" as comms
+
+[-> worker: run()
+activate worker
+loop while not stopped.is_set
+worker -> worker ++ : update_base()
+
+worker ->o vision: update()
+worker -> vision ++ : get_image()
+return image
+worker -> display ++ : light_is_on()
+return light_on
+worker -> message ** : Message(title="update", light_on, image)
+worker -> comms ++ : send_message(message)
+return
+
+return
+end
+[<-- worker
+deactivate worker
+
+@enduml

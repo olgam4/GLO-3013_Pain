@@ -1,0 +1,614 @@
+@startuml
+
+namespace cortex {
+    namespace domain {
+        namespace objective {
+            enum Color {
+                NoColor
+                Red
+                Green
+                Blue
+                Yellow
+            }
+
+            enum Shape {
+                NoShape
+                Triangle
+                Square
+                Pentagon
+                Circle
+            }
+
+            class Objective {
+                +destination:int
+                +color:Color
+                +shape:Shape
+            }
+            Objective *-- Color
+            Objective *-- Shape
+
+            class Item {
+                +color:Color
+                +shape:Shape
+                +position:CameraCoordinate
+            }
+            Item *-- Color
+            Item *-- Shape
+            Item *-- coordinate.CameraCoordinate
+        }
+
+        namespace path {
+            class AbsoluteMovement {
+                +start:AbsoluteCoordinate
+                +stop:AbsoluteCoordinate
+                +direction:Orientation
+                +serialize():str
+            }
+            AbsoluteMovement *-- coordinate.AbsoluteCoordinate
+
+            class AbsolutePath {
+                +movements:AbsoluteMovement
+                +serialize():str
+            }
+            AbsolutePath o-- AbsoluteMovement
+
+            class CameraMovement {
+                +start:CameraCoordinate
+                +stop:CameraCoordinate
+            }
+            CameraMovement *-- coordinate.CameraCoordinate
+
+            class CameraPath {
+                +movements:List[CameraMovement]
+            }
+            CameraPath o-- CameraMovement
+        }
+
+        class Cortex {
+            -communication_cortex:ICommunicationCortex
+            -visual_cortex:IVisualCortex
+            -direction_cortex:DirectionCortex
+            -nap_cortex:INapCortex
+            -dexterity_cortex:DexterityCortex
+            -objective:Objective
+            +run():void
+            +charge_subroutine():void
+            +go_home_subroutine():void
+            +read_qr_subroutine():void
+            +grab_subroutine():void
+            +drop_subroutine():void
+        }
+        Cortex --> cortex.domain.objective.Objective
+
+        class DexterityCortex {
+            -mobility_service:MobilityService
+            -dexterity_service:DexterityService
+            -direction_cortex:DirectionCortex
+            -visual_cortex:IVisualCortex
+            +grab(:Objective):void
+            +drop(:Objective):void
+        }
+        DexterityCortex --* Cortex
+        DexterityCortex --> cortex.domain.objective.Objective
+
+        class DirectionCortex {
+            -pathable_catalog:PathableCatalog
+            -position_service:PositionService
+            -mobility_service:MobilityService
+            -pathable_communicator:IPathableCommunicator
+            +reach_charge():void
+            +reach_home():void
+            +reach_qr_code():void
+            +reach_source():void
+            +reach_goal():void
+            +update_directions(:bool):void
+        }
+        DirectionCortex --* Cortex
+        DirectionCortex --* DexterityCortex
+
+        interface IAbsolutePathable{
+            +path_from(:AbsoluteCoordinate):AbsolutePath
+        }
+        IAbsolutePathable --> cortex.domain.path.AbsolutePath
+
+        interface ICommunicationCortex {
+            +announce_win():void
+        }
+        ICommunicationCortex --* Cortex
+
+        interface INapCortex {
+            +recharge():void
+        }
+        INapCortex --* Cortex
+
+        interface IPathableCommunicator {
+            +request_charge_station_pathable():void
+            +request_qr_code_pathable():void
+            +request_source_pathable():void
+            +request_goal_pathable():void
+            +request_home_pathable():void
+            +send_full_path(:AbsolutePath):void
+        }
+        IPathableCommunicator --* DirectionCortex
+        IPathableCommunicator --> cortex.domain.path.AbsolutePath
+
+        interface IPathableFactory {
+            +create_from(:Table):IAbsolutePathable
+        }
+        IPathableFactory --> IAbsolutePathable
+        IPathableFactory --> Table
+
+        class ItemChooser {
+            -objective:Objective
+            +choose_from(:List[Item]):Item
+        }
+        ItemChooser *-- cortex.domain.objective.Objective
+        ItemChooser --> cortex.domain.objective.Item
+
+        interface IVisualCortex {
+            -vision_service: VisionService
+            +find_objective():Objective
+            +find_items():List[Item]
+            +find_drop_position(:Objective):CameraCoordinate
+        }
+        Cortex *-- IVisualCortex
+        IVisualCortex --* DexterityCortex
+        IVisualCortex --> cortex.domain.objective.Objective
+        IVisualCortex --> coordinate.CameraCoordinate
+        IVisualCortex --> cortex.domain.objective.Item
+
+        class PathableCatalog{
+            -pathable_communicator:IPathableCommunicator
+            +charge_station:IAbsolutePathable
+            +qr_code:IAbsolutePathable
+            +source:IAbsolutePathable
+            +goal:IAbsolutePathable
+            +home:IAbsolutePathable
+            +populate(:bool):void
+        }
+        PathableCatalog --* DirectionCortex
+        PathableCatalog *-- IPathableCommunicator
+        PathableCatalog --> IAbsolutePathable
+
+        class Table {
+            -height:int
+            -width:int
+            -data:List[int]
+            -orientation:Orientation
+        }
+    }
+    namespace infrastructure {
+        class CommunicationCortex {
+            -display_service:DisplayService
+            +announce_win():void
+        }
+        cortex.domain.ICommunicationCortex <|.. CommunicationCortex
+
+        class VisualCortex {
+            -vision_service:VisionService
+            +find_objective():Objective
+            +path_to_grab_objective(:Objective):IPathable
+            +path_to_drop_objective(:Objective):IPathable
+        }
+        cortex.domain.IVisualCortex <|.. VisualCortex
+    }
+    namespace service {
+        class CortexService{
+            -cortex:Cortex
+            +run():void
+        }
+        CortexService *-- cortex.domain.Cortex
+    }
+    cortex.domain -[hidden]-----> cortex.infrastructure
+}
+
+namespace mobility {
+    namespace domain {
+        class Angle {
+            -radians:float
+            -degrees:float
+            +from_degrees(:float):Angle
+            +zero():Angle
+        }
+
+        class Distance {
+            -centimeters:float
+            +zero():Distance
+        }
+
+        interface IDrivable {
+            +translate(:Angle, :Distance):void
+            +rotate(:Angle):void
+            +brake():void
+        }
+        IDrivable --> Angle
+        IDrivable --> Distance
+
+        namespace operation {
+            abstract Operation {
+                +execute(:IDrivable):void
+            }
+            Operation --> mobility.domain.IDrivable
+
+            class RotateOperation {
+                -angle:Angle
+                +execute(:IDrivable):void
+            }
+            RotateOperation *-- mobility.domain.Angle
+
+            class TranslateOperation {
+                -angle:Angle
+                -distance:Distance
+                +execute(:IDrivable):void
+            }
+            TranslateOperation *-- mobility.domain.Angle
+            TranslateOperation *-- mobility.domain.Distance
+            Operation <|-- RotateOperation
+            Operation <|-- TranslateOperation
+        }
+    }
+    namespace service {
+        interface IOperationCalculator{
+            +calculate(:AbsoluteMovement):List[Operation]
+            +calculate(:CameraMovement):List[Operation]
+            +calculate(:Union[AbsoluteMovement, CameraMovement]):List[Operation]
+        }
+
+        class MobilityService {
+            -drivable:IDrivable
+            -operation_calculator:IOperationCalculator
+            -driving:Lock
+            +drive(Union[AbsolutePath, CameraPath]):void
+            +operate(List[Operation]):void
+            +brake():void
+        }
+        MobilityService *-- mobility.domain.IDrivable
+        MobilityService *-- IOperationCalculator
+        MobilityService --> cortex.domain.path.AbsolutePath
+        MobilityService --> cortex.domain.path.CameraPath
+        MobilityService --> mobility.domain.operation.Operation
+        MobilityService --* cortex.domain.DexterityCortex
+        MobilityService --* cortex.domain.DirectionCortex
+    }
+    namespace infrastructure {
+        class DrivableGPIO {
+            +move(:Movement, :Deviation):void
+            +rotate(:Angle, :Deviation):void
+        }
+        mobility.domain.IDrivable <|.. DrivableGPIO
+    }
+    mobility.domain -[hidden]----> mobility.infrastructure
+}
+
+namespace vision {
+    namespace domain {
+        namespace item {
+            enum Color {
+                Red
+                Green
+                Blue
+                Yellow
+            }
+
+            enum Shape {
+                Triangle
+                Square
+                Pentagon
+                Circle
+            }
+
+            class Item {
+                -color:Color
+                -shape:Shape
+            }
+            Item *-- Color
+            Item *-- Shape
+        }
+
+        interface ICamera {
+            +take_picture():Image
+        }
+
+        interface ICameraCalibration {
+            +rectify_image(:Image):Image
+            +convert_pixel_to_real(:CameraCoordinate):CameraCoordinate
+        }
+
+        interface ICameraCalibrationFactory {
+            +load_calibration_from_file(:path, :int, :int):ICameraCalibration
+        }
+        ICameraCalibrationFactory --> ICameraCalibration
+
+        interface ICameraFactory {
+            +create_camera():ICamera
+        }
+        ICameraFactory --> ICamera
+
+        interface IDestinationFinder {
+            +find_destination(:Image, :int):CameraCoordinate
+        }
+
+        class IItemFinder {
+            +find_items(:Image):ItemRelativePositions
+        }
+
+        class Image {
+            +content:ndarray
+            +width:int
+            +height:int
+            +process(:Callable[ndarray, ndarray]):Image
+        }
+        ICamera --> Image
+        ICameraCalibration --> Image
+        IDestinationFinder --> Image
+        IItemFinder --> Image
+
+        interface IQrCodeReader {
+            +read_qr_code(:Image):str
+        }
+        Image <-- IQrCodeReader
+
+        class ItemRelativePosition {
+            -item:Item
+            -position:RelativePosition
+        }
+        ItemRelativePosition *-- vision.domain.item.Item
+
+        class ItemRelativePositions {
+            -items:ItemRelativePosition[]
+        }
+        ItemRelativePositions o-- "*" ItemRelativePosition
+        ItemRelativePositions <-- IItemFinder
+    }
+    namespace service {
+        class ImageAssembler {
+            +to_string(:Image):str
+        }
+
+        class ObjectiveParser {
+            parse(:str):Objective
+        }
+        ObjectiveParser --> cortex.domain.objective.Objective
+
+        class VisionService {
+            -camera_factory:ICameraFactory
+            -camera_calibration_factory:ICameraCalibrationFactory
+            -qr_code_reader:IQrCodeReader
+            -item_finder:IItemFinder
+            -destination_finder:IDestinationFinder
+            -objective_parser:ObjectiveParser
+            -sight_service:SightService
+            +update():void
+            +get_image():str
+            +find_items():ItemRelativePositions
+            +find_destination_position(:int):CameraCoordinate
+            +read_objective():Objective
+        }
+        cortex.infrastructure.VisualCortex *-- VisionService
+        VisionService *-- vision.domain.ICameraFactory
+        VisionService *-- vision.domain.ICameraCalibrationFactory
+        VisionService *-- vision.domain.IQrCodeReader
+        VisionService *-- vision.domain.IItemFinder
+        VisionService *-- vision.domain.IDestinationFinder
+        VisionService *-- ObjectiveParser
+        VisionService --> vision.domain.ItemRelativePositions
+        VisionService --> coordinate.CameraCoordinate
+        VisionService --> ImageAssembler
+        VisionService --* cortex.domain.IVisualCortex
+    }
+}
+
+namespace dexterity {
+    namespace domain {
+        interface IPrehensor {
+            +grab():void
+            +let_go():void
+            +discharge:void
+        }
+
+        interface IChargeable {
+            +get_charge:float
+        }
+    }
+
+    namespace service {
+        class DexterityService {
+            -prehensor:IPrehensor
+            +grab():void
+            +let_go():void
+            +discharge:void
+        }
+        DexterityService *-- dexterity.domain.IPrehensor
+        DexterityService --* cortex.domain.DexterityCortex
+    }
+}
+
+namespace communication {
+    namespace domain {
+        interface ILight {
+            +turn_on():void
+            +turn_off():void
+        }
+
+        interface IConnection {
+            +send_msg():void
+            +recv_msg():str
+        }
+
+        interface IBaseConnector {
+            +connect_base():IConnection
+        }
+        IBaseConnector -> IConnection
+    }
+    namespace service {
+        class DisplayService {
+            -light:ILight
+            +switch_light():void
+            +set_light_on():void
+            +set_light_off():void
+        }
+        cortex.infrastructure.CommunicationCortex *-- DisplayService
+        DisplayService *-- communication.domain.ILight
+
+        class PositionService {
+            -communication_service:CommunicationService
+            -position_received:Event
+            -position:AbsoluteCoordinate
+            +set_position(:str):void
+            +get_position():AbsoluteCoordinate
+        }
+        PositionService --* cortex.domain.DirectionCortex
+
+        class Message {
+            -title:str
+            -data:Dict
+            +get_data(:str):Any
+            +serialize():str
+            +deserialize(:str):Message
+        }
+
+        class CommunicationService {
+            -connection:IConnection
+            +receive_message():Message
+            +send_message(:Message):void
+        }
+        Message <- CommunicationService
+        CommunicationService *-- communication.domain.IConnection
+        CommunicationService --> communication.domain.IBaseConnector
+        PositionService *-- CommunicationService
+    }
+    namespace infrastructure {
+        class LightLED {
+            +turn_on():void
+            +turn_off():void
+        }
+        communication.domain.ILight <|.. LightLED
+
+        class SocketConnection {
+            -socket:socket
+        }
+        communication.domain.IConnection <|.. SocketConnection
+
+        class SocketBaseConnector {
+            -port:int
+        }
+        communication.domain.IBaseConnector <|.. SocketBaseConnector
+        SocketBaseConnector -> SocketConnection
+    }
+    communication.service -[hidden]--> communication.domain
+}
+
+namespace sight {
+    namespace domain {
+        interface IEyes {
+            +look_ahead():void
+            +look_down():void
+        }
+    }
+
+    namespace service {
+        class SightService {
+            -eyes: IEyes
+            +look_ahead():void
+            +look_down():void
+        }
+        SightService *-- sight.domain.IEyes
+        SightService <-- vision.service.VisionService
+    }
+}
+
+namespace application {
+    namespace domain {
+        interface ICerebrum {
+            +run():void
+        }
+        ICerebrum <|.. cortex.service.CortexService
+
+        interface IBaseWatcher {
+            +run():void
+            +stop():void
+        }
+
+        interface IRobotWorker {
+            +run():void
+            +stop():void
+        }
+
+        IRobotWorker *-- dexterity.domain.IChargeable
+
+        class Application {
+            -cerebrum:ICerebrum
+            -robot_worker:IRobotWorker
+            +run():void
+        }
+        Application *-- IBaseWatcher
+        Application *-- ICerebrum
+        Application *-- IRobotWorker
+    }
+    namespace infrastructure {
+        class RobotWorker {
+            -display_service:DisplayService
+            -communication_service:CommunicationService
+            -vision_service:VisionService
+        }
+        application.domain.IRobotWorker <|.. RobotWorker
+        RobotWorker *-- vision.service.VisionService
+        RobotWorker *-- communication.service.CommunicationService
+        RobotWorker *-- communication.service.DisplayService
+    }
+}
+application -[hidden]---> cortex
+
+namespace context {
+    class Championship
+    application.domain.Application <-- Championship
+
+    class CommandReceiver
+    application.domain.Application <-- CommandReceiver
+}
+
+namespace coordinate{
+    class AbsoluteCoordinate{
+        +x_pos:float
+        +y_pos:float
+        +orientation:Orientation
+        +serialize():str
+        +deserialize(:str):AbsoluteCoordinate
+        +zero():AbsoluteCoordinate
+    }
+    cortex.domain.IAbsolutePathable --> AbsoluteCoordinate
+    communication.service.PositionService --> AbsoluteCoordinate
+
+    class Orientation{
+        +radians:float
+        +degrees:float
+    }
+    cortex.domain.Table *-- Orientation
+    Orientation --* AbsoluteCoordinate
+    Orientation --* cortex.domain.path.AbsoluteMovement
+
+    class CameraCoordinate{
+        +x_pos
+        +y_pos
+    }
+
+    class RobotCoordinate{
+        +x:float
+        +y:float
+        +length:float
+        +orientation_change:Orientation
+        +direction:Orientation
+    }
+    Orientation --* RobotCoordinate
+}
+
+class Pain {
+    +championship():void
+    +display_command_remote():void
+}
+Pain --> context.Championship
+Pain --> context.CommandReceiver
+
+
+
+@enduml

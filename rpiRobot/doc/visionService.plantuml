@@ -1,0 +1,27 @@
+@startuml
+
+participant ":Cortex" as cortex
+participant ":VisualCortex" as visual
+participant ":VisionService" as vision
+participant ":SightService" as sight
+
+[-> cortex: read_qr_subroutine()
+activate cortex
+cortex -> visual ++ : find_objective()
+visual -> vision ++ : update()
+return
+visual -> vision ++ : read_objective()
+
+vision -> sight ++ : look_ahead()
+return
+
+vision -> vision : update()
+vision -> vision ++ : parse()
+return objective :Objective
+
+return objective
+return objective
+[<-- cortex
+deactivate cortex
+
+@enduml

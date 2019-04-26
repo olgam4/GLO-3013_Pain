@@ -1,0 +1,841 @@
+@startuml
+
+namespace ui {
+    namespace domain {
+        namespace indicator {
+            interface Observer {
+                +update():void
+            }
+        }
+    }
+}
+
+namespace communication {
+    namespace domain {
+        interface IConnection {
+            +send_msg(:str):void
+            +recv_msg():str
+        }
+
+        interface IRobotConnector {
+            +connect_robot():IConnection
+        }
+        IRobotConnector --> IConnection
+    }
+    namespace service {
+        class Message {
+            +_title:str
+            -data:Dict
+            +get_data(:str):Any
+            +serialize():str
+            +deserialize(:str):Message
+        }
+
+        class CommunicationService {
+            -connection:IConnection
+            +receive_message():Message
+            +send_message(:Message):void
+        }
+        CommunicationService --> communication.domain.IConnection
+        CommunicationService --> communication.domain.IRobotConnector
+        CommunicationService --> Message
+    }
+    namespace infrastructure {
+        class SocketConnection {
+            -socket:socket
+            -recvall(:int):bytes
+        }
+        communication.domain.IConnection <|.. SocketConnection
+
+        class SocketRobotConnector {
+            -port:int
+            -address:str
+            -broadcast():void
+        }
+        communication.domain.IRobotConnector <|.. SocketRobotConnector
+        SocketRobotConnector --> SocketConnection
+    }
+    communication.service -[hidden]--> communication.domain
+    communication.domain -[hidden]--> communication.infrastructure
+}
+
+namespace light {
+    namespace domain {
+        class Light {
+            +turned_on:bool
+        }
+    }
+    namespace service {
+        class LightDTO {
+            +turned_on:bool
+        }
+
+        class LightService {
+            -light:Light
+            -observers:Observer[]
+            +attach(:Observer):void
+            -notify():void
+            +update_light(:Light):void
+            +get_light():LightDTO
+        }
+        LightService --> LightDTO
+        LightService --> light.domain.Light
+        ui.domain.indicator.Observer "*" --o LightService
+    }
+}
+
+namespace application {
+    namespace domain {
+        interface IUi {
+            +run():void
+        }
+        interface IRobotWatcher {
+            +run():void
+            +stop():void
+        }
+        interface IApplicationWorker {
+            +run():void
+            +stop():void
+        }
+        interface IChargeStationWatcher {
+            +run():void
+            +stop():void
+        }
+        interface IObserver {
+            +update():void
+        }
+        class Application {
+            -ui:IUi
+            -robot_watcher:IRobotWatcher
+            -application_worker:IApplicationWorker
+            -charge_station_watcher:IChargeStationWatcher
+        }
+        Application *-- IUi
+        Application *-- IRobotWatcher
+        Application *-- IApplicationWorker
+        Application *-- IChargeStationWatcher
+    }
+    namespace infrastructure {
+        class TkinterUi {
+            -main_view:IMainView
+        }
+        application.domain.IUi <|.. TkinterUi
+        TkinterUi *-- ui.domain.IMainView
+
+        interface ICommandStateNotifier {
+            +completed(:str):void
+            +errored(:str):void
+            +cancelled(:str):void
+        }
+
+        class RobotWatcher {
+            -communication_service:CommunicationService
+            -light_service:LightService
+            -command_state_notifier:ICommandStateNotifier
+        }
+        application.domain.IRobotWatcher <|.. RobotWatcher
+        RobotWatcher *-- communication.service.CommunicationService
+        RobotWatcher *-- light.service.LightService
+        RobotWatcher *-- ICommandStateNotifier
+
+        class ApplicationWorker
+        application.domain.IApplicationWorker <|.. ApplicationWorker
+
+        class ChargeStationWatcher {
+            -communication_service:CommunicationService
+            -charge_station:IChargeStation
+        }
+        application.domain.IChargeStationWatcher <|.. ChargeStationWatcher
+    }
+}
+
+namespace remote {
+    namespace domain {
+        enum CommandStatus {
+            completed
+            cancelled
+            errored
+        }
+
+        class CommandCallback {
+            -command:Callable[[CommandStatus],None]
+            +call(:CommandStatus):void
+        }
+        CommandCallback --> CommandStatus
+
+        interface IRemoteControl {
+            +execute_charge_subroutine(:CommandCallback):void
+            +execute_go_home_subroutine(:CommandCallback):void
+            +execute_read_qr_subroutine(:CommandCallback):void
+            +execute_grab_subroutine(:str, :CommandCallback):void
+            +execute_drop_subroutine(:str, :CommandCallback):void
+            +execute_switch_light_subroutine(:CommandCallback):void
+            +execute_directional_movement(:str, :float, :CommandCallback):void
+            +execute_rotational_movement(:float, :CommandCallback):void
+        }
+        IRemoteControl --> CommandCallback
+    }
+    namespace service {
+        class RemoteService {
+            -remote_control:IRemoteControl
+            +execute_charge_subroutine(:CommandCallback):void
+            +execute_go_home_subroutine(:CommandCallback):void
+            +execute_read_qr_subroutine(:CommandCallback):void
+            +execute_grab_subroutine(:str, :CommandCallback):void
+            +execute_drop_subroutine(:str, :CommandCallback):void
+            +execute_switch_light_subroutine(:CommandCallback):void
+            +execute_directional_movement(:str, :float, :CommandCallback):void
+            +execute_rotational_movement(:float, :CommandCallback):void
+        }
+        RemoteService *-- remote.domain.IRemoteControl
+        RemoteService --> CommandCallback
+    }
+    namespace infrastructure {
+        class RemoteControl {
+            -communication_service:CommunicationService
+            -callback_commands:Dict[str, CommandCallback]
+        }
+        remote.domain.IRemoteControl <|.. RemoteControl
+        application.infrastructure.ICommandStateNotifier <|.. RemoteControl
+        RemoteControl *-- communication.service.CommunicationService
+    }
+    remote.service -[hidden]--> remote.domain
+    remote.domain -[hidden]---> remote.infrastructure
+}
+
+namespace time {
+    namespace domain {
+        interface IChronometer {
+            +start():void
+            +stop():void
+            +reset():void
+            +get_current_time() :float
+        }
+    }
+    namespace service {
+        class TimeService {
+            -chronometer:IChronometer
+            -observers:Observer[]
+            +attach(:Observer)
+            -notify()
+            +start():void
+            +stop():void
+            +reset():void
+            +get_current_time():TimeDTO
+        }
+        TimeService *-- time.domain.IChronometer
+        class TimeDTO {
+            +value:float
+        }
+        TimeService --> TimeDTO
+        ui.domain.indicator.Observer "*" --o TimeService
+    }
+    namespace infrastructure {
+        class PythonChronometer
+        time.domain.IChronometer <|.. PythonChronometer
+    }
+    time.service -[hidden]--> time.domain
+    time.domain -[hidden]-> time.infrastructure
+}
+
+namespace objective {
+    namespace domain {
+        class Objective {
+            +value:str
+        }
+    }
+    namespace service {
+        class ObjectiveDTO {
+            +value:str
+        }
+
+        class ObjectiveService {
+            -objective:Objective
+            -observers:Observer[]
+            +attach(:Observer):void
+            -notify():void
+            +getObjective():ObjectiveDTO
+        }
+        ObjectiveService *-- objective.domain.Objective
+        ObjectiveService --> ObjectiveDTO
+        ui.domain.indicator.Observer "*" --o ObjectiveService
+    }
+    objective.service -[hidden]--> objective.domain
+}
+
+namespace pathDrawing {
+    namespace domain {
+        interface IDrawer {
+            draw(:Image, :Path):Image
+            draw_robot(:Image, :Position):Image
+        }
+
+        class PathDrawingService {
+            -drawer:IDrawer
+            -vision_service:VisionService
+            -path_service:PathService
+            +current_path_image:Image
+            +update():void
+            +attach(:IObserver):void
+        }
+        PathDrawingService --> IDrawer
+    }
+}
+
+namespace pathfinding {
+    namespace domain {
+        class Angle {
+            -rads:float
+            +from_degrees(:float)
+            +radians:float
+            +degrees:float
+        }
+
+        class Coord {
+            +x:int
+            +y:int
+            +distance_from(:int, :int):float
+        }
+
+        interface IApproachPositionFinder {
+            +calculate_from(:Position):Position
+        }
+
+        interface IPathableCatalog {
+            +home:Table
+            +charge_station:Table
+            +qr_code:Table
+            +goal:Table
+            +source:Table
+        }
+        IPathableCatalog --> Table
+
+        interface IPathfinder {
+            +pathable_to(:Coord):Table
+        }
+        IPathfinder --> Coord
+        IPathfinder --> Table
+
+        interface IPathfinderFactory {
+            +create(:Coord[]):IPathfinder
+        }
+        IPathfinderFactory --> IPathfinder
+
+        class Movement {
+            +start:Coord
+            +end:Coord
+            +deserialize(:str):Movement
+        }
+        Movement *-- Coord
+
+        class Path {
+            +movements:Movement[]
+            +deserialize(:str):Path
+        }
+        pathDrawing.domain.IDrawer --> Path
+        Path *-- Movement
+
+        class Position {
+            +coordinate:Coord
+            +orientation:Angle
+            +serialize():str
+        }
+        Position *-- Coord
+        Position *-- Angle
+        pathDrawing.domain.IDrawer --> Position
+        IApproachPositionFinder --> Position
+
+        class Table {
+            +height:int
+            +width:int
+            -data:float[]
+            +getitem(int, int):float
+            +setitem(int, int, float):void
+            +add_obstacle(:Coord):void
+        }
+        Table --> Coord
+    }
+    namespace infrastructure {
+        class GrassfirePathfinder {
+            -table:Table
+            pathable_to(:Coord):Table
+        }
+        pathfinding.domain.IPathfinder <|.. GrassfirePathfinder
+
+        class GrassfirePathfinderFactory {
+            -table_template:Table
+        }
+        pathfinding.domain.IPathfinderFactory <|.. GrassfirePathfinderFactory
+        pathfinding.domain.Table <-- GrassfirePathfinderFactory
+        GrassfirePathfinderFactory --> GrassfirePahtfinder
+    }
+    namespace service {
+        class PathfindingService {
+            -pathable_catalog:IPathableCatalog
+            +get_home():Table
+            +get_goal():Table
+            +get_source():Table
+            +get_qr_code():Table
+            +get_charge_station():Table
+        }
+        PathfindingService --> pathfinding.domain.Table
+        PathfindingService *-- pathfinding.domain.IPathableCatalog
+
+        class PathService {
+            +path:Path
+        }
+        PathService --* pathDrawing.domain.PathDrawingService
+        PathService *-- pathfinding.domain.Path
+
+        class PositionService {
+            -vision_service:VisionService
+            -communication_service:CommunicationService
+            +update_robot_position():void
+        }
+        PositionService ..|> application.domain.IObserver
+        PositionService *-- communication.service.CommunicationService
+    }
+    pathfinding.service -[hidden]-> pathfinding.domain
+    pathfinding.domain -[hidden]----> pathfinding.infrastructure
+}
+
+namespace prehensor {
+    namespace domain {
+        interface IChargeStation {
+            +recv():str
+        }
+
+        class Prehensor {
+            +charge:float
+        }
+    }
+
+    namespace service {
+        class PrehensorService {
+            -prehensor:Prehensor
+            -observers:IObserver[]
+            +attach(:IObserver):void:
+            +update_prehensor(:Prehensor):void:
+            +get_prehensor():Prehensor:
+        }
+        PrehensorService --> prehensor.domain.Prehensor
+        PrehensorService --> prehensor.domain.IChargeStation
+    }
+}
+
+namespace timer {
+    namespace domain {
+        class IChronometer {
+            +start():void
+            +stop():void
+            +reset():void
+            +get_current_time():float
+        }
+    }
+
+    namespace service {
+        class TimeDTO {
+            +time_value:float
+        }
+
+        class TimeService {
+            -chronometer:IChronometer
+            -observers:IObserver[]
+            +attach(:IObserver):void
+            +start():void
+            +stop():void
+            +update():void
+            +get_current_time():TimeDTO
+            +reset():void
+        }
+        TimeService --> timer.domain.IChronometer
+        TimeService --> TimeDTO
+        TimeService --> application.domain.IObserver
+    }
+}
+
+namespace vision {
+    namespace domain {
+        interface ICamera {
+            +take_picture():Image
+        }
+        ICamera --> Image
+
+        interface ICameraCalibration {
+            +rectify_image(:Image):Image
+            +convert_table_pixel_to_real(:Coord):Coord
+            +convert_obstacle_pixel_to_real(:Coord):Coord
+            +convert_robot_pixel_to_real(:Coord):Coord
+        }
+        ICameraCalibration --> Image
+        ICameraCalibration --> pathfinding.domain.Coord
+
+        interface ICameraCalibrationFactory {
+            +load_calibration_from_file(:Path, :Image):ICameraCalibration
+        }
+        ICameraCalibrationFactory --> ICameraCalibration
+        ICameraCalibrationFactory --> Image
+        ICameraCalibrationFactory --> pathfinding.domain.Path
+
+        interface ICameraFactory {
+            +get_cameras():int[]
+            +create_camera():ICamera
+        }
+        ICameraFactory --> ICamera
+
+        interface IGoalFinder {
+            +find(:Image):Tuple[Rectangle, Angle]
+        }
+        IGoalFinder --> Rectangle
+        IGoalFinder --> Image
+        IGoalFinder --> pathfinding.domain.Angle
+
+        interface IHomeFinder {
+            +find(:Image):Rectangle
+        }
+        IHomeFinder --> Rectangle
+        IHomeFinder --> Image
+
+        interface IImageDrawer {
+            +draw_home(:Image, :Rectangle):Image
+            +draw_goal(:Image, :Rectangle):Image
+            +draw_obstacles(:Image, :Rectangle[]):Image
+            +draw_source(:Image, :Rectangle):Image
+        }
+        IImageDrawer --> Rectangle
+        IImageDrawer --> Image
+
+        class Image {
+            +content
+            +as_rgb()
+            +resize(width, height)
+        }
+        pathDrawing.domain.PathDrawingService --> Image
+
+        interface IObstacleFinder {
+            +find(:Image):Rectangle[]
+        }
+        IObstacleFinder --> Rectangle
+        IObstacleFinder --> Image
+
+        interface IPlayAreaFinder {
+            +find(:Image):Rectangle
+        }
+        IPlayAreaFinder --> Rectangle
+        IPlayAreaFinder --> Image
+
+        interface IRobotFinder {
+            +find(:Image):Tuple[Rectangle, Angle]
+        }
+        IRobotFinder --> Rectangle
+        IRobotFinder --> Image
+        IRobotFinder --> pathfinding.domain.Angle
+
+        interface ISourceFinder {
+            find(:Image):Tuple[Rectangle, Angle]
+        }
+        ISourceFinder --> Rectangle
+        ISourceFinder --> Image
+        ISourceFinder --> pathfinding.domain.Angle
+
+        class Rectangle {
+            -x: int
+            -y: int
+            +width: int
+            +height: int
+            +top_left_corner:Coord
+            +bottom_right_corner:Coord
+            +width_height_ratio:float
+            +get_center():Coord
+            +is_square():bool
+        }
+        Rectangle --> pathfinding.domain.Coord
+    }
+    namespace service {
+        class ImageAssembler {
+            +to_image(:str):Image
+        }
+        ImageAssembler --> vision.domain.Image
+
+        class RobotCameraService {
+            -observers:Observer[]
+            -image:Image
+            +attach(:Observer):void
+            -notify():void
+            +update_image(:str):void
+            +get_image():Image
+        }
+        RobotCameraService --> vision.domain.Image
+        ui.domain.indicator.Observer "*" --o RobotCameraService
+        RobotCameraService --> ImageAssembler
+
+        class VisionService {
+            -camera_factory:ICameraFactory
+            -camera_calibration_factory:ICameraCalibrationFactory
+            -image_drawer:IImageDrawer
+            -play_area_finder:IPlayAreaFinder
+            -home_finder:IHomeFinder
+            -goal_finder:IGoalFinder
+            -source_finder:ISourceFinder
+            -obstacle_finder:IObstacleFinder
+            -robot_finder:IRobotFinder
+            -observers:Observer[]
+            -image:Image
+            +attach(:Observer)
+            -notify():void
+            +update():void
+            +get_image():Image
+            +get_home():Coord
+            +get_charge_station():Coord
+            +get_qr_code():Coord
+            +get_goal():Coord
+            +get_source():Coord
+            +get_obstacles():Coord[]
+            +get_robot():Coord
+        }
+        VisionService *-- vision.domain.ICameraFactory
+        VisionService *-- vision.domain.ICameraCalibrationFactory
+        VisionService *-- vision.domain.IImageDrawer
+        VisionService *-- vision.domain.IPlayAreaFinder
+        VisionService *-- vision.domain.IHomeFinder
+        VisionService *-- vision.domain.IGoalFinder
+        VisionService *-- vision.domain.ISourceFinder
+        VisionService *-- vision.domain.IObstacleFinder
+        VisionService *-- vision.domain.IRobotFinder
+        VisionService *-- vision.domain.ICamera
+        ui.domain.indicator.Observer "*" --o VisionService
+        VisionService *-- vision.domain.ICameraFactory
+        VisionService --> vision.domain.Image
+        VisionService --> pathfinding.domain.Coord
+        VisionService --* pathDrawing.domain.IDrawer
+        VisionService --* pathfinding.service.PositionService
+    }
+    namespace infrastructure {
+        class CameraDoesNotExistError
+        vision.domain.VisionError <|-- CameraDoesNotExistError
+        class AcquisitionError
+        vision.domain.VisionError <|-- AcquisitionError
+
+        class OpenCvCamera {
+            -video_capture
+        }
+        vision.domain.ICamera <|.. OpenCvCamera
+        OpenCvCamera --> AcquisitionError
+
+        class OpenCvCameraFactory {
+            -find_all_camera()
+        }
+        vision.domain.ICameraFactory <|.. OpenCvCameraFactory
+        OpenCvCameraFactory --> CameraDoesNotExistError
+        OpenCvCameraFactory --> OpenCvCamera
+    }
+    vision.service -[hidden]--> vision.domain
+    vision.domain -[hidden]---> vision.infrastructure
+}
+
+namespace ui {
+    namespace domain {
+        namespace indicator {
+            class Charge {
+                -prehensor_service:PrehensorService
+                +draw():void
+                +update():void
+            }
+            Observer <|.. Charge
+            Charge *-- prehensor.service.PrehensorService
+
+            class Indicators {
+                +draw():void
+            }
+            Observer <|.. Indicators
+
+            class Light {
+                -light_service:LightService
+                +draw():void
+                +update():void
+            }
+            Observer <|.. Light
+            Light *-- light.service.LightService
+
+            class Objective {
+                -objective_service:ObjectiveService
+                +draw():void
+            }
+            Observer <|.. Objective
+            Objective *-- objective.service.ObjectiveService
+
+            class Timer {
+                -time_service:TimeService
+                +draw():void
+                +update():void
+            }
+            Observer <|.. Timer
+            Timer *-- time.service.TimeService
+        }
+
+        class RadioButtonGroup {
+            -elements:ttk.Radiobutton[]
+            +draw():void
+        }
+
+        namespace subroutine {
+            interface ISubroutineRunner {
+                +execute_charge_subroutine(:CommandCallback):void
+                +execute_go_home_subroutine(:CommandCallback):void
+                +execute_read_qr_subroutine(:CommandCallback):void
+                +execute_grab_subroutine(:CommandCallback):void
+                +execute_drop_subroutine(:CommandCallback):void
+                +execute_switch_light_subroutine(:CommandCallback):void
+                +execute_directional_movement(:CommandCallback):void
+                +execute_rotational_movement(:CommandCallback):void
+                +execute_activate_magnet(:CommandCallback):void
+                +execute_deactivate_magnet(:CommandCallback):void
+                +execute_update_directions_subroutine(:CommandCallback):void
+                +execute_discharge_magnet(:CommandCallback):void
+                +execute_championship_subroutine(:CommandCallback):void
+            }
+            ISubroutineRunner --> remote.domain.CommandCallback
+
+            class Subroutine {
+                -subroutine_runner:ISubroutineRunner
+                +draw():void
+            }
+            Subroutine *-- ISubroutineRunner
+
+            class Subroutines {
+                -subroutines:Subroutine[]
+                +add(:Subroutine):void
+                +draw():void
+            }
+            Subroutines o-- "*" Subroutine
+
+            class WinSubroutine {
+                -light:Light
+                +draw():void
+            }
+            Subroutine <|-- WinSubroutine
+            WinSubroutine *-- ui.domain.indicator.Light
+
+            class UpdateDirectionsSubroutine {
+                +draw():void
+            }
+            Subroutine <|-- UpdateDirectionsSubroutine
+
+            class ReadQrSubroutine {
+                -objective:Objective
+                +draw():void
+            }
+            Subroutine <|-- ReadQrSubroutine
+            ReadQrSubroutine *-- ui.domain.indicator.Objective
+
+            class MagnetSubroutine {
+                +draw():void
+            }
+            Subroutine <|-- MagnetSubroutine
+
+            class GrabSubroutine {
+                -shapes:RadioButtonGroup
+                -colors:RadioButtonGroup
+                +draw():void
+            }
+            Subroutine <|-- GrabSubroutine
+            GrabSubroutine *-- "2" ui.domain.RadioButtonGroup
+
+            class GoHomeSubroutine {
+                +draw():void
+            }
+            Subroutine <|-- GoHomeSubroutine
+
+            class DropSubroutine {
+                -zones:RadioButtonGroup
+                +draw():void
+            }
+            Subroutine <|-- DropSubroutine
+            DropSubroutine *-- ui.domain.RadioButtonGroup
+
+            class ChargeSubroutine {
+                +draw():void
+            }
+            Subroutine <|-- ChargeSubroutine
+
+            class ChampionshipSubroutine {
+                -time_service:TimeService
+                +draw():void
+            }
+            Subroutine <|-- ChampionshipSubroutine
+        }
+
+        interface IMainView {
+            +draw():void
+        }
+
+        class DirectionalControl {
+            -subroutine_runner:ISubroutineRunner
+            +draw():void
+        }
+        DirectionalControl *-- ui.domain.subroutine.ISubroutineRunner
+
+        class PlayArea {
+            -vision_service:VisionService
+            +draw():void
+        }
+        ui.domain.indicator.Observer <|.. PlayArea
+        PlayArea *-- vision.service.VisionService
+
+        class WorldCameraSelector {
+            -vision_service:VisionService
+            -play_area:PlayArea
+            +draw():void
+        }
+        WorldCameraSelector *-- PlayArea
+        WorldCameraSelector *-- vision.service.VisionService
+
+        class OnBoardCamera {
+            -robot_camera_service:RobotCameraService
+            +draw():void
+        }
+        ui.domain.indicator.Observer <|.. OnBoardCamera
+        OnBoardCamera *-- vision.service.RobotCameraService
+    }
+    namespace infrastructure {
+        class RemoteSubroutineRunner {
+            -remote_service:RemoteService
+            -callback:CommandCallback
+        }
+        ui.domain.subroutine.ISubroutineRunner <|.. RemoteSubroutineRunner
+        RemoteSubroutineRunner *-- remote.service.RemoteService
+
+        class RemoteMainView {
+            -world_camera_selector:WorldCameraSelector
+            -on_board_camera:OnBoardCamera
+            -directional_control:DirectionalControl
+            -subroutines:Subroutines
+        }
+        ui.domain.IMainView <|.. RemoteMainView
+        ui.domain.DirectionalControl <-- RemoteMainView
+        ui.domain.subroutine.Subroutines <-- RemoteMainView
+        ui.domain.WorldCameraSelector <-- RemoteMainView
+        ui.domain.OnBoardCamera <-- RemoteMainView
+    }
+    ui.domain.subroutine -[hidden]---> ui.domain.indicator
+}
+application -[hidden]----> ui
+ui -[hidden]------> light
+ui -[hidden]------> objective
+ui -[hidden]------> time
+ui -[hidden]------> vision
+ui -[hidden]------> pathfinding
+
+namespace context {
+    class Remote
+    class RemoteUi
+}
+application.domain.Application <-- context
+
+class BaseStation {
+    +remote():void
+}
+BaseStation --> context.Remote
+BaseStation --> context.RemoteUi
+
+@enduml

@@ -1,0 +1,37 @@
+@startuml
+
+participant RobotPositionService as position
+
+[-> position : update()
+activate position
+
+participant "camera : ICamera" as camera
+position -> camera : get_robot_position()
+activate camera
+note right of camera : uses world camera to\nfind robot position
+camera --> position : position
+deactivate camera
+
+position -> position : notify()
+activate position
+loop for each IRobotPositionObserver
+
+participant "drawer : RobotDrawer, IRobotPositionObserver" as drawer
+position -> drawer : update()
+activate drawer
+drawer -> position : get_position()
+activate position
+position --> drawer : position
+deactivate position
+drawer -> drawer : draw()
+drawer --> position
+deactivate drawer
+end
+deactivate position
+
+note right of drawer : for other components\nthe same sequence is used
+
+position -->[
+deactivate position
+
+@enduml

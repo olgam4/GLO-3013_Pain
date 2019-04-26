@@ -1,0 +1,26 @@
+@startuml
+
+participant ":Application" as app
+participant ":IRobotWorker" as worker
+participant ":ICerebrum" as cerebrum
+
+[-> app: run()
+activate app
+app -> worker ++ : run()
+note right of worker
+    the worker here
+    keeps the base
+    station up to date
+end note
+app -> cerebrum ++ : run()
+note right of cerebrum
+    the implementation
+    does its work here
+end note
+return
+app ->o worker: stop()
+return
+[<-- app
+deactivate app
+
+@enduml

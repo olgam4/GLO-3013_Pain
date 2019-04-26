@@ -1,0 +1,26 @@
+@startuml
+
+participant ":CommunicationService" as comms
+participant "message:Message" as message
+participant ":IConnection" as conn
+
+[-> comms: send_message(message)
+activate comms
+comms -> message ++ : serialize()
+return data
+comms -> conn ++ : send_msg(data)
+return
+[<-- comms
+deactivate comms
+
+participant "received_message:Message" as new_msg
+
+[-> comms: receive_message()
+activate comms
+comms -> conn ++: recv_msg()
+return data
+comms -> new_msg ** : Message.deserialize(data)
+[<-- comms: received_message
+deactivate comms
+
+@enduml

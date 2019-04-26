@@ -1,0 +1,20 @@
+@startuml
+
+participant ":VisionService" as vision
+participant ":ObstaclesFinder" as obstacles
+participant ":CameraCalibration" as calibration
+
+[-> vision : get_obstacles()
+activate vision
+vision -> obstacles ++ : find(self._image)
+obstacles -> obstacles : image.process(self._process)
+return obstacles:Obstacle[]
+loop for obstacle in obstacles
+vision -> calibration ++ : convert_pixel_to_real(obstacle)
+calibration -> calibration : convert(obstacle)
+return coord
+end
+[<--vision : coords
+deactivate vision
+
+@enduml

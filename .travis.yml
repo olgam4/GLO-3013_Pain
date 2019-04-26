@@ -1,0 +1,9 @@
+language: python
+matrix:
+    include:
+      - python: "3.7-dev"
+        env: TEST_SUITE=baseStation
+      - python: "3.5"
+        env: TEST_SUITE=rpiRobot
+script: make -C $TEST_SUITE test
+
